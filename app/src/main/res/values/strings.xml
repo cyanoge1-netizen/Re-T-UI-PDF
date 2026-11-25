@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Re:T-UI PDF</string>
+    <string name="shortcut_recent">Resume PDF</string>
+    <string name="shortcut_recent_long">Resume Last Viewed Document</string>
 </resources>

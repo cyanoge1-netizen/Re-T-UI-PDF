@@ -41,6 +41,20 @@
                 <data android:scheme="file" />
                 <data android:scheme="content" />
             </intent-filter>
+
+            <!-- Receive Shared PDFs from WhatsApp, Telegram, Chrome, Drive, Gmail, etc. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+
+            <!-- App Shortcuts (Long-press Launcher Shortcut) -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+
         </activity>
 
     </application>

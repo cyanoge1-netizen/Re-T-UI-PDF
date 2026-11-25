@@ -39,7 +39,11 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         ThemeManager.loadTheme()
         buildCyberdeckUi()
-        handleIntent(intent)
+        if (intent != null && hasDocumentIntent(intent)) {
+            handleIntent(intent)
+        } else {
+            loadRecent()
+        }
     }
 
     override fun onResume() {
@@ -51,6 +55,16 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleIntent(intent)
+    }
+
+    private fun hasDocumentIntent(intent: Intent): Boolean {
+        return intent.action == Intent.ACTION_SEND ||
+                intent.action == Intent.ACTION_VIEW ||
+                intent.action == "com.dvil.retui.pdf.OPEN_CONSOLE" ||
+                intent.data != null ||
+                intent.hasExtra("path") ||
+                intent.hasExtra("target") ||
+                intent.hasExtra(Intent.EXTRA_STREAM)
     }
 
     private fun buildCyberdeckUi() {
@@ -133,6 +147,7 @@ class MainActivity : AppCompatActivity() {
             )
             onPageChangedListener = { page, total ->
                 updateStatusHeader(page, total)
+                currentPdfFile?.let { saveRecent(it, page - 1) }
             }
             onCenterTapListener = {
                 toggleHud()
@@ -265,21 +280,18 @@ class MainActivity : AppCompatActivity() {
         val density = resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()
 
-        // Outer window cyberdeck border
         windowFrame.background = GradientDrawable().apply {
             setColor(ThemeManager.windowBackgroundColor)
             setStroke(dp(1), ThemeManager.borderColor)
             cornerRadius = 0f
         }
 
-        // Header
         headerLayout.background = GradientDrawable().apply {
             setColor(ThemeManager.headerBackgroundColor)
             setStroke(dp(1), ThemeManager.headerBorderColor)
         }
         headerTitleView.setTextColor(ThemeManager.headerTextColor)
 
-        // Header Glyphs
         for (i in 1 until headerLayout.childCount) {
             val v = headerLayout.getChildAt(i) as? TextView
             v?.setTextColor(ThemeManager.headerTextColor)
@@ -289,11 +301,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Output Banner
         outputBannerView.setTextColor(ThemeManager.outputTextColor)
         outputBannerView.setBackgroundColor(ThemeManager.outputBackgroundColor)
 
-        // Command Bar
         commandBarLayout.background = GradientDrawable().apply {
             setColor(ThemeManager.moduleBgColor)
             setStroke(dp(1), ThemeManager.borderColor)
@@ -302,7 +312,6 @@ class MainActivity : AppCompatActivity() {
         commandInputView.setTextColor(ThemeManager.inputTextColor)
         commandInputView.setHintTextColor(Color.parseColor("#66" + Integer.toHexString(ThemeManager.inputTextColor).takeLast(6)))
 
-        // Bottom F-Key Buttons
         val fKeyLayout = bottomFKeyBar.getChildAt(0) as? LinearLayout
         if (fKeyLayout != null) {
             for (i in 0 until fKeyLayout.childCount) {
@@ -320,23 +329,32 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleIntent(intent: Intent?) {
         if (intent == null) return
+
+        var targetUri: Uri? = null
+
+        if (intent.action == Intent.ACTION_SEND) {
+            // Share from other apps (WhatsApp, Telegram, Chrome, Drive, Gmail, etc.)
+            targetUri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM) ?: intent.data
+        } else {
+            targetUri = intent.data
+        }
+
         var targetPath = intent.getStringExtra("path") ?: intent.getStringExtra("target")
 
-        if (targetPath == null && intent.data != null) {
-            val uri: Uri = intent.data!!
-            if (uri.scheme == "file") {
-                targetPath = uri.path
-            } else if (uri.scheme == "content") {
+        if (targetPath == null && targetUri != null) {
+            if (targetUri.scheme == "file") {
+                targetPath = targetUri.path
+            } else if (targetUri.scheme == "content") {
                 try {
-                    val temp = File(cacheDir, "input.pdf")
-                    contentResolver.openInputStream(uri)?.use { input ->
+                    val temp = File(cacheDir, "shared_document.pdf")
+                    contentResolver.openInputStream(targetUri)?.use { input ->
                         FileOutputStream(temp).use { output ->
                             input.copyTo(output)
                         }
                     }
                     targetPath = temp.absolutePath
                 } catch (e: Exception) {
-                    printOutput("[ERR · FAILED TO RESOLVE CONTENT URI]")
+                    printOutput("[ERR · FAILED TO RESOLVE SHARED STREAM]")
                 }
             }
         }
@@ -344,8 +362,34 @@ class MainActivity : AppCompatActivity() {
         if (targetPath != null) {
             loadFile(File(targetPath))
         } else {
-            printOutput("[STATUS: READY · Tap screen or type ':open /sdcard/Download/sample.pdf']")
+            loadRecent()
         }
+    }
+
+    private fun saveRecent(file: File, page: Int) {
+        val prefs = getSharedPreferences("retui_pdf_prefs", MODE_PRIVATE)
+        prefs.edit()
+            .putString("last_path", file.absolutePath)
+            .putInt("last_page", page)
+            .apply()
+    }
+
+    private fun loadRecent() {
+        val prefs = getSharedPreferences("retui_pdf_prefs", MODE_PRIVATE)
+        val lastPath = prefs.getString("last_path", null)
+        val lastPage = prefs.getInt("last_page", 0)
+        if (lastPath != null) {
+            val f = File(lastPath)
+            if (f.exists() && f.canRead()) {
+                loadFile(f)
+                if (lastPage > 0 && lastPage < pdfView.pageCount) {
+                    pdfView.showPage(lastPage)
+                }
+                printOutput("[RESUMED · ${f.name} · Page ${lastPage + 1}]")
+                return
+            }
+        }
+        printOutput("[STATUS: READY · Tap screen or type ':open /sdcard/Download/sample.pdf']")
     }
 
     private fun loadFile(file: File) {
@@ -353,6 +397,7 @@ class MainActivity : AppCompatActivity() {
             currentPdfFile = file
             pdfView.openPdf(file)
             updateStatusHeader(1, pdfView.pageCount)
+            saveRecent(file, 0)
             printOutput("[OPENED · ${file.name} · ${pdfView.pageCount} Pages]")
         } else {
             printOutput("[ERR · FILE NOT FOUND: ${file.absolutePath}]")
@@ -453,7 +498,6 @@ class MainActivity : AppCompatActivity() {
             "hud", "toggle" -> toggleHud()
             "q", "quit", "exit" -> finish()
             else -> {
-                // If pure number entered, treat as page jump (e.g. :12)
                 val page = cmd.toIntOrNull()
                 if (page != null) {
                     pdfView.showPage(page - 1)
@@ -513,7 +557,7 @@ class MainActivity : AppCompatActivity() {
               :goto <pg> / :<pg>  - Jump to page
               :open <path>        - Open PDF file
               :zoom <fit|in|out>  - Change zoom
-              :phosphor <type>    - Set CRT phosphor (amber, matrix, cyan, mono)
+              :phosphor <type>    - Set CRT phosphor (amber, matrix, cyan, mono, theme)
               :rot <90|180|270>   - Rotate document
               :info               - Show document metadata
               :q / :quit          - Exit reader
@@ -526,16 +570,12 @@ class MainActivity : AppCompatActivity() {
               Horizontal Fling    - Swipe to flip page
               Pinch-to-zoom       - Fluid zoom 70%..500%
 
-            [VIM KEYBOARD SHORTCUTS]:
-              [j] / [k]           - Pan Up / Down
-              [h] / [l] / [PgUp]  - Previous / Next Page
-              [i]                 - Invert / Phosphor toggle
-              [r]                 - Rotate 90 degrees
-              [f]                 - Fit to screen
-              [:]                 - Focus command prompt
-              [q]                 - Quit
+            [SHORTCUTS & SHARING]:
+              - Share from WhatsApp/Telegram/Chrome -> Tap 'Re:T-UI PDF'
+              - Long-press icon -> 'Resume PDF'
+              - In Re:T-UI: alias -add pdf start -a android.intent.action.VIEW -d "file://%"
         """.trimIndent()
-        
+
         AlertDialog.Builder(this)
             .setTitle("[HELP & COMMANDS]")
             .setMessage(helpMsg)
