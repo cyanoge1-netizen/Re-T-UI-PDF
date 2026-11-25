@@ -9,15 +9,25 @@ import java.io.File
 import java.io.FileInputStream
 
 object ThemeManager {
-    var backgroundColor: Int = Color.parseColor("#0A0E14")
-    var windowBackgroundColor: Int = Color.parseColor("#D010141C")
-    var headerBackgroundColor: Int = Color.parseColor("#F0080B10")
-    var borderColor: Int = Color.parseColor("#00F0FF")
-    var headerBorderColor: Int = Color.parseColor("#00F0FF")
-    var inputTextColor: Int = Color.parseColor("#00F0FF")
+    // V6 Re:T-UI Color Palette Defaults
+    var backgroundColor: Int = Color.parseColor("#080B10")
+    var windowBackgroundColor: Int = Color.parseColor("#F0080B10")
+    var headerBackgroundColor: Int = Color.parseColor("#F50D1117")
+    var headerTextColor: Int = Color.parseColor("#00E5FF")
+    var borderColor: Int = Color.parseColor("#00E5FF")
+    var headerBorderColor: Int = Color.parseColor("#00E5FF")
+    var promptColor: Int = Color.parseColor("#39FF14")
+    var inputTextColor: Int = Color.parseColor("#00E5FF")
     var outputTextColor: Int = Color.parseColor("#E6EDF3")
-    var toolbarIconColor: Int = Color.parseColor("#39FF14")
-    var phosphorColor: Int = Color.parseColor("#00FF66")
+    var outputBackgroundColor: Int = Color.parseColor("#161B22")
+    var buttonBgColor: Int = Color.parseColor("#121820")
+    var buttonTextColor: Int = Color.parseColor("#00E5FF")
+    var buttonBorderColor: Int = Color.parseColor("#00E5FF")
+    var moduleBgColor: Int = Color.parseColor("#0D1117")
+
+    // Phosphor Color Modes: MATRIX, AMBER, CYAN, MONO, THEME
+    var phosphorColor: Int = Color.parseColor("#33FF77")
+    var phosphorMode: String = "MATRIX"
 
     fun loadTheme() {
         val paths = listOf(
@@ -55,14 +65,17 @@ object ThemeManager {
                             "background_color", "bg_color" -> backgroundColor = parsedColor
                             "terminal_window_background_color" -> windowBackgroundColor = parsedColor
                             "terminal_header_background_color" -> headerBackgroundColor = parsedColor
+                            "terminal_header_text_color" -> headerTextColor = parsedColor
                             "terminal_border_color" -> borderColor = parsedColor
                             "terminal_header_border_color" -> headerBorderColor = parsedColor
-                            "input_text_color", "input_color" -> {
-                                inputTextColor = parsedColor
-                                phosphorColor = parsedColor
-                            }
-                            "output_text_color", "output_color" -> outputTextColor = parsedColor
-                            "toolbar_icon_color", "toolbar_color" -> toolbarIconColor = parsedColor
+                            "prompt_color" -> promptColor = parsedColor
+                            "input_color", "input_text_color" -> inputTextColor = parsedColor
+                            "output_color", "output_text_color" -> outputTextColor = parsedColor
+                            "output_bg", "output_background_color" -> outputBackgroundColor = parsedColor
+                            "button_bg" -> buttonBgColor = parsedColor
+                            "button_text" -> buttonTextColor = parsedColor
+                            "button_border" -> buttonBorderColor = parsedColor
+                            "module_bg_color" -> moduleBgColor = parsedColor
                         }
                     } catch (_: Exception) {}
                 }
@@ -70,10 +83,25 @@ object ThemeManager {
             eventType = parser.next()
         }
         fis.close()
+        updatePhosphorColor()
+    }
+
+    fun setPhosphorType(type: String) {
+        phosphorMode = type.uppercase()
+        updatePhosphorColor()
+    }
+
+    private fun updatePhosphorColor() {
+        phosphorColor = when (phosphorMode) {
+            "AMBER" -> Color.parseColor("#FFB000")
+            "CYAN" -> Color.parseColor("#00E5FF")
+            "MONO" -> Color.parseColor("#E0E0E0")
+            "THEME" -> promptColor
+            else -> Color.parseColor("#33FF77") // Matrix green
+        }
     }
 
     fun getPhosphorFilter(): ColorMatrixColorFilter {
-        // Invert grayscale: black (0) becomes target phosphor color, white (255) becomes dark background
         val pr = Color.red(phosphorColor) / 255f
         val pg = Color.green(phosphorColor) / 255f
         val pb = Color.blue(phosphorColor) / 255f
